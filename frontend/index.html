@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OT/ICS Risk Radar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  :root {
+    --bg: #12151A;
+    --panel: #1B1F27;
+    --panel-border: #2A303B;
+    --text: #E7EAEE;
+    --text-dim: #8A93A3;
+    --radar: #4FD1C5;
+    --ok: #3FD97F;
+    --warn: #E8A63C;
+    --crit: #E85C4A;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+  }
+  /* signature element: a faint rotating radar sweep behind everything,
+     the one visual idea the whole page is organized around */
+  .radar-sweep {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 140vmax; height: 140vmax;
+    transform: translate(-50%, -50%);
+    background: conic-gradient(from 0deg, transparent 0deg, rgba(79,209,197,0.10) 18deg, transparent 40deg);
+    animation: sweep 6s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+  }
+  @keyframes sweep { to { transform: translate(-50%, -50%) rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .radar-sweep { animation: none; } }
+
+  .app { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 28px 24px 64px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 8px; }
+  h1 { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; letter-spacing: 0.02em; margin: 0; }
+  h1 span { color: var(--radar); }
+  .subtitle { color: var(--text-dim); font-size: 13px; margin: 4px 0 28px; }
+
+  .conn { font-family: 'JetBrains Mono', monospace; font-size: 12px; display: flex; align-items: center; gap: 7px; color: var(--text-dim); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); }
+  .dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.down { background: var(--crit); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-bottom: 32px; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-left: 3px solid var(--card-accent, var(--panel-border));
+    border-radius: 6px;
+    padding: 16px 18px;
+  }
+  .card-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+  .machine-id { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px; letter-spacing: 0.01em; }
+  .status-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--card-accent, var(--text-dim)); }
+
+  .health-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .health-track { flex: 1; height: 6px; background: #262C36; border-radius: 3px; overflow: hidden; }
+  .health-fill { height: 100%; border-radius: 3px; background: var(--card-accent, var(--text-dim)); transition: width 0.4s ease; }
+  .health-num { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-variant-numeric: tabular-nums; width: 34px; text-align: right; }
+
+  .readouts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-dim); }
+  .readouts b { display: block; color: var(--text); font-size: 13px; font-weight: 500; margin-top: 2px; }
+
+  .section-label { font-family: 'JetBrains Mono', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); margin: 0 0 12px; }
+
+  .feed { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px; overflow: hidden; }
+  .alert-row { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--panel-border); align-items: flex-start; }
+  .alert-row:last-child { border-bottom: none; }
+  .alert-tag {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 2px 7px; border-radius: 3px; white-space: nowrap; margin-top: 1px;
+  }
+  .alert-tag.maintenance { background: rgba(232,166,60,0.15); color: var(--warn); }
+  .alert-tag.security { background: rgba(232,92,74,0.15); color: var(--crit); }
+  .alert-body { flex: 1; }
+  .alert-desc { font-size: 13px; line-height: 1.4; }
+  .alert-meta { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+  .empty { padding: 24px 16px; color: var(--text-dim); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="radar-sweep"></div>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// Point this at wherever the API actually runs. Same-origin default
+// works if this file is served by the API itself; override for a
+// standalone static host.
+const API_BASE = window.RADAR_API_BASE || "http://localhost:8000";
+const API_KEY = window.RADAR_API_KEY || "";  // set only if the API was started with API_KEY
+const WS_URL = API_BASE.replace(/^http/, "ws") + "/ws" + (API_KEY ? `?api_key=${encodeURIComponent(API_KEY)}` : "");
+const authHeaders = API_KEY ? { "x-api-key": API_KEY } : {};
+
+function statusFor(score) {
+  if (score === null || score === undefined) return { color: "var(--text-dim)", label: "NO DATA" };
+  if (score >= 70) return { color: "var(--ok)", label: "NOMINAL" };
+  if (score >= 40) return { color: "var(--warn)", label: "DEGRADED" };
+  return { color: "var(--crit)", label: "CRITICAL" };
+}
+
+function timeAgo(iso) {
+  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  return `${Math.floor(s / 3600)}h ago`;
+}
+
+function MachineCard({ machine }) {
+  const status = statusFor(machine.health_score);
+  return (
+    <div className="card" style={{ "--card-accent": status.color }}>
+      <div className="card-top">
+        <span className="machine-id">{machine.machine_id}</span>
+        <span className="status-label">{status.label}</span>
+      </div>
+      <div className="health-row">
+        <div className="health-track">
+          <div className="health-fill" style={{ width: `${machine.health_score ?? 0}%` }} />
+        </div>
+        <span className="health-num">{machine.health_score ?? "—"}</span>
+      </div>
+      <div className="readouts">
+        <div>VIB<b>{machine.vibration_mm_s ?? "—"}</b></div>
+        <div>TEMP<b>{machine.temperature_c ?? "—"}</b></div>
+        <div>CURR<b>{machine.current_a ?? "—"}</b></div>
+      </div>
+    </div>
+  );
+}
+
+function AlertRow({ alert }) {
+  return (
+    <div className="alert-row">
+      <span className={`alert-tag ${alert.alert_type}`}>{alert.alert_type}</span>
+      <div className="alert-body">
+        <div className="alert-desc">{alert.description}</div>
+        <div className="alert-meta">{alert.machine_id} · {timeAgo(alert.detected_at)}</div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [machines, setMachines] = useState({});
+  const [alerts, setAlerts] = useState([]);
+  const [connected, setConnected] = useState(false);
+  const wsRef = useRef(null);
+
+  async function loadInitial() {
+    try {
+      const [machinesRes, alertsRes] = await Promise.all([
+        fetch(`${API_BASE}/machines`, { headers: authHeaders }).then(r => r.json()),
+        fetch(`${API_BASE}/alerts?limit=20`, { headers: authHeaders }).then(r => r.json()),
+      ]);
+      const byId = {};
+      machinesRes.forEach(m => {
+        byId[m.machine_id] = { machine_id: m.machine_id, health_score: m.latest_health_score };
+      });
+      setMachines(byId);
+      setAlerts(alertsRes);
+    } catch (e) {
+      console.error("Initial load failed", e);
+    }
+  }
+
+  useEffect(() => {
+    loadInitial();
+    function connect() {
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+      ws.onopen = () => setConnected(true);
+      ws.onclose = () => { setConnected(false); setTimeout(connect, 2000); };
+      ws.onerror = () => ws.close();
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "telemetry") {
+          setMachines(prev => ({
+            ...prev,
+            [msg.machine_id]: {
+              ...prev[msg.machine_id],
+              machine_id: msg.machine_id,
+              vibration_mm_s: msg.vibration_mm_s,
+              temperature_c: msg.temperature_c,
+              current_a: msg.current_a,
+            },
+          }));
+        } else if (msg.type === "health_score") {
+          setMachines(prev => ({
+            ...prev,
+            [msg.machine_id]: { ...prev[msg.machine_id], machine_id: msg.machine_id, health_score: msg.health_score },
+          }));
+        } else if (msg.type === "alert") {
+          setAlerts(prev => [msg, ...prev].slice(0, 30));
+        }
+      };
+    }
+    connect();
+    return () => wsRef.current && wsRef.current.close();
+  }, []);
+
+  const machineList = Object.values(machines).sort((a, b) => a.machine_id.localeCompare(b.machine_id));
+
+  return (
+    <div className="app">
+      <header>
+        <h1>OT<span>/</span>ICS RISK RADAR</h1>
+        <div className="conn">
+          <span className={`dot ${connected ? "live" : "down"}`}></span>
+          {connected ? "LIVE" : "RECONNECTING"}
+        </div>
+      </header>
+      <p className="subtitle">Predictive maintenance and OT security anomaly detection — one pipeline, two risk types.</p>
+
+      <p className="section-label">Plant floor</p>
+      <div className="grid">
+        {machineList.length === 0
+          ? <div className="empty">Waiting for data — is the simulator running?</div>
+          : machineList.map(m => <MachineCard key={m.machine_id} machine={m} />)}
+      </div>
+
+      <p className="section-label">Alert feed</p>
+      <div className="feed">
+        {alerts.length === 0
+          ? <div className="empty">No alerts yet.</div>
+          : alerts.map((a, i) => <AlertRow key={a.id ?? i} alert={a} />)}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

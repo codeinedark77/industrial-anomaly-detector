@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # The three test suites are pure-logic tests by design (machines.py,
+  # baseline.py, and security_rules.py all separate simulation/detection
+  # logic from MQTT and DB plumbing specifically so they don't need a
+  # broker or database to test) - so this job needs no services at all.
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test simulator
+        run: |
+          cd simulator
+          pip install -r requirements.txt
+          python test_machines.py
+
+      - name: Test detection (maintenance CUSUM + security rules)
+        run: |
+          cd detection
+          pip install -r requirements.txt
+          python test_baseline.py
+          python test_security_rules.py
+
+      - name: Syntax-check services that need live infra to run
+        run: |
+          python -m py_compile ingestion/consumer.py
+          python -m py_compile detection/maintenance_detector.py detection/security_detector.py
+          python -m py_compile api/main.py
+
+  # Real end-to-end smoke test: actual broker, actual database, actual
+  # services, actual simulator - this is the same sequence used to
+  # validate the pipeline by hand during development (see docs/DESIGN.md
+  # section 4.2-4.4), turned into something that runs on every push.
+  live-smoke-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_USER: radar
+          POSTGRES_PASSWORD: radar
+          POSTGRES_DB: radar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Mosquitto and Postgres client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq mosquitto mosquitto-clients postgresql-client
+
+      - name: Start Mosquitto with the repo's own dev config
+        run: |
+          mosquitto -c mosquitto/mosquitto.conf -d
+          sleep 1
+
+      - name: Apply schema
+        env:
+          PGPASSWORD: radar
+        run: psql -h localhost -U radar -d radar -f db/schema.sql
+
+      - name: Test API layer against the real database
+        env:
+          DATABASE_URL: postgresql://radar:radar@localhost:5432/radar
+        run: |
+          cd api
+          pip install -r requirements.txt
+          python test_main.py
+
+      - name: Install service dependencies
+        run: |
+          pip install -r ingestion/requirements.txt -r detection/requirements.txt
+
+      - name: Start ingestion + both detectors
+        env:
+          DATABASE_URL: postgresql://radar:radar@localhost:5432/radar
+        run: |
+          cd ingestion && python consumer.py > /tmp/consumer.log 2>&1 &
+          cd ../detection && python maintenance_detector.py > /tmp/maint.log 2>&1 &
+          cd ../detection && python security_detector.py > /tmp/security.log 2>&1 &
+          sleep 3
+
+      - name: Run the simulator for 15s of real traffic
+        run: |
+          cd simulator
+          timeout 15 python simulator.py || true
+
+      - name: Assert telemetry and health scores actually landed
+        env:
+          PGPASSWORD: radar
+        run: |
+          T=$(psql -h localhost -U radar -d radar -tAc "SELECT count(*) FROM telemetry")
+          H=$(psql -h localhost -U radar -d radar -tAc "SELECT count(*) FROM health_scores")
+          echo "telemetry rows: $T, health_score rows: $H"
+          test "$T" -gt 0
+          test "$H" -gt 0
+
+      - name: Dump service logs on failure
+        if: failure()
+        run: |
+          echo "--- consumer ---"; cat /tmp/consumer.log || true
+          echo "--- maintenance ---"; cat /tmp/maint.log || true
+          echo "--- security ---"; cat /tmp/security.log || true

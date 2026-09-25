@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ot-ics-risk-radar"
+version = "0.1.0"
+description = "ot-ics-risk-radar project"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "paho-mqtt",
+    "prometheus_client",
+    "psycopg",
+    "starlette"
+]
+
+[tool.setuptools]
+packages = ["db", "api", "frontend", "mosquitto", "simulator", "ingestion", "detection"]

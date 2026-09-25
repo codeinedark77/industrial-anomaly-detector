@@ -1,0 +1,29 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: ot-radar-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: ot-radar-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: radar
+      POSTGRES_PASSWORD: radar
+      POSTGRES_DB: radar
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ot-radar-db-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  ot-radar-db-data:
+
+# Milestone 2+ adds kafka + zookeeper (or redpanda) here if you take
+# the heavier ingestion path instead of consuming MQTT directly.
