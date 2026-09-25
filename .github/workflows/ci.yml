@@ -91,9 +91,9 @@ jobs:
         env:
           DATABASE_URL: postgresql://radar:radar@localhost:5432/radar
         run: |
-          cd ingestion && python consumer.py > /tmp/consumer.log 2>&1 &
-          cd ../detection && python maintenance_detector.py > /tmp/maint.log 2>&1 &
-          cd ../detection && python security_detector.py > /tmp/security.log 2>&1 &
+          (cd ingestion && python consumer.py > /tmp/consumer.log 2>&1) &
+          (cd detection && python maintenance_detector.py > /tmp/maint.log 2>&1) &
+          (cd detection && python security_detector.py > /tmp/security.log 2>&1) &
           sleep 3
 
       - name: Run the simulator for 15s of real traffic
