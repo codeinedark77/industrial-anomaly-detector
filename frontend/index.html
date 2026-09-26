@@ -90,8 +90,10 @@
   }
   .alert-tag.maintenance { background: rgba(232,166,60,0.15); color: var(--warn); }
   .alert-tag.security { background: rgba(232,92,74,0.15); color: var(--crit); }
+  .alert-tag.compliance { background: rgba(79,209,197,0.15); color: var(--radar); }
   .alert-body { flex: 1; }
   .alert-desc { font-size: 13px; line-height: 1.4; }
+  .alert-desc.policy-violation { border-left: 2px solid var(--radar); padding-left: 8px; color: #FFF; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
   .alert-meta { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-dim); margin-top: 3px; }
   .empty { padding: 24px 16px; color: var(--text-dim); font-size: 13px; text-align: center; }
 </style>
@@ -149,11 +151,13 @@ function MachineCard({ machine }) {
 }
 
 function AlertRow({ alert }) {
+  const isPolicy = alert.description && alert.description.startsWith("Policy Violation");
+  
   return (
     <div className="alert-row">
-      <span className={`alert-tag ${alert.alert_type}`}>{alert.alert_type}</span>
+      <span className={`alert-tag ${isPolicy ? 'compliance' : alert.alert_type}`}>{isPolicy ? 'compliance' : alert.alert_type}</span>
       <div className="alert-body">
-        <div className="alert-desc">{alert.description}</div>
+        <div className={`alert-desc ${isPolicy ? 'policy-violation' : ''}`}>{alert.description}</div>
         <div className="alert-meta">{alert.machine_id} · {timeAgo(alert.detected_at)}</div>
       </div>
     </div>
@@ -229,7 +233,7 @@ function App() {
           {connected ? "LIVE" : "RECONNECTING"}
         </div>
       </header>
-      <p className="subtitle">Predictive maintenance and OT security anomaly detection — one pipeline, two risk types.</p>
+      <p className="subtitle">Enterprise OT/ICS Security Suite — Real-time Machine Learning (Isolation Forests), IEC 62443 Compliance, and Predictive Maintenance unified.</p>
 
       <p className="section-label">Plant floor</p>
       <div className="grid">

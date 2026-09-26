@@ -422,3 +422,7 @@ claiming untested work as done.
 All milestones through M6, plus CI and metrics from M7, have working,
 tested code in this repo. Kafka is a documented plan, not code. This
 document is living - update the roadmap table as tracing lands.
+
+## 9. Known Architectural Gaps (Honest Disclosures)
+
+**WebSocket Authentication**: The dashboard authenticates its WebSocket connection by passing `?api_key=` in the URL. This is a known workaround for browsers not supporting custom headers in the WebSocket API, but it inherently leaks secrets into server logs and browser history. A production fix would require transitioning to short-lived signed tickets fetched via an authenticated REST call before initiating the WebSocket. For this portfolio demonstration, the URL query parameter was chosen for simplicity, but it remains a known security gap.
